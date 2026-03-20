@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Video Downloader Skill v0.0.1
+Video Downloader Skill v0.1.0
 Download and transcode videos to PPT-compatible formats
 
 URL Acquisition Methods:
@@ -295,7 +295,7 @@ def main():
     args = parse_args()
 
     print("=" * 60)
-    print("Video Downloader Skill v0.0.1")
+    print("Video Downloader Skill v0.1.0")
     print("=" * 60)
     print(f"Keyword: {args.keyword}")
     print(f"Count: {args.count}")
