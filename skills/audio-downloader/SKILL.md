@@ -1,37 +1,95 @@
 ---
 name: audio-downloader
-version: 0.0.1
-description: 批量下载网站音频资源，支持需要登录的网站，自动去重和生成报告
-triggers:
-  - 下载音频
-  - 爬取音频
-  - 批量下载 mp3、wav、m4a 等音频格式
-  - 保存网站音频
-  - download audio
-  - scrape audio files
+description: >
+  Batch download audio files from websites, including sites requiring login.
+  Trigger phrases: "download audio", "save audio", "批量下载音频", "下载音频", "爬取音频",
+  "scrape audio", "mp3 download", "音频下载", "extract audio", "音频资源", "音频批量下载",
+  "download mp3", "download m4a", "download wav", "audio playlist".
+  Supports automatic deduplication and report generation.
 ---
 
-# Audio Downloader
+# Audio Downloader Skill
 
-批量下载网站音频资源，支持需要登录的网站，自动去重和生成报告。
+Batch download audio files from websites with automatic deduplication and report generation.
 
-## 📖 核心流程
+---
 
-### 1. 访问页面
+## Step 0: Check Dependencies (CRITICAL)
 
-```python
-browser_use(action="open", url=target_url)
-browser_use(action="snapshot")  # 检查是否需要登录
+**Before downloading any audio, you MUST verify curl is installed.**
+
+### Check Command
+
+```bash
+curl --version
 ```
 
-### 2. 判断意图
+**Expected output:** prints curl version info (e.g., "curl 8.0.0")
 
-- 用户说"下载全部"、"批量下载" → 下载播放列表所有音频
-- 用户说"下载这个"、"保存音频" → 仅下载当前音频
+### If Missing
 
-### 3. 收集音频 URL 并保存
+| Platform    | Install Command                    |
+| ----------- | ---------------------------------- |
+| macOS/Linux | Usually pre-installed              |
+| macOS       | `brew install curl`                |
+| Linux       | `sudo apt install curl` (Debian)   |
+| Windows     | `winget install curl`              |
 
-#### 当前音频
+---
+
+## Step 1: Access Page and Check Login
+
+**Always start with headless mode. Switch to headed mode only if login is required.**
+
+### 1.1 Open in Headless Mode
+
+```python
+browser_use(action="start", headed=False)
+browser_use(action="open", url=target_url)
+browser_use(action="snapshot")
+```
+
+### 1.2 Check Login Requirement
+
+Look for login indicators in the page:
+- Login button/form
+- "Please login" / "请登录" / "登录" text
+- Captcha
+- Restricted content placeholder
+- Audio player not visible or disabled
+
+### 1.3 Decision
+
+| Login Required? | Action |
+|----------------|--------|
+| **No** | Continue with headless mode, proceed to Step 2 |
+| **Yes** | Switch to headed mode for user login (see below) |
+
+### 1.4 Switch to Headed Mode (If Login Required)
+
+```python
+browser_use(action="close")
+browser_use(action="start", headed=True)
+browser_use(action="open", url=target_url)
+# Wait for user to complete login manually
+# User should notify when login is complete
+browser_use(action="snapshot")  # Verify login success
+```
+
+**Important:** After user completes login, verify the page shows logged-in state before proceeding.
+
+---
+
+## Step 2: Determine User Intent
+
+- User says "download all", "批量下载" → Download entire playlist
+- User says "download this", "保存音频" → Download current audio only
+
+---
+
+## Step 3: Collect Audio URLs
+
+### Single Audio
 
 ```javascript
 () => {
@@ -42,28 +100,32 @@ browser_use(action="snapshot")  # 检查是否需要登录
 }
 ```
 
-#### 播放列表
+### Playlist
 
-根据页面特点选择方法：
+Choose method based on page structure:
 
-1. **网络拦截**：拦截 fetch/XHR 获取音频 URL
-2. **源码提取**：从页面源码或全局变量匹配音频 URL  
-3. **点击加载**：逐个点击播放列表项，从 `<audio>` 标签获取 URL
+1. **Network interception**: Intercept fetch/XHR requests to get audio URLs
+2. **Source extraction**: Extract audio URLs from page source or global variables
+3. **Click-to-load**: Click each playlist item, extract URL from `<audio>` tag
 
-#### 保存 URL 列表
+### Save URL List
 
-将收集的 URL 保存为 JSON 文件：
+Save collected URLs as JSON:
 
 ```json
 {
   "urls": [
-    {"index": 1, "name": "音频名称", "url": "https://..."},
-    {"index": 2, "name": "音频名称", "url": "https://..."}
+    {"index": 1, "name": "Audio Title", "url": "https://..."},
+    {"index": 2, "name": "Audio Title", "url": "https://..."}
   ]
 }
 ```
 
-### 4. 获取认证信息
+---
+
+## Step 4: Get Authentication Info
+
+For sites requiring login, extract cookies and referer:
 
 ```javascript
 () => JSON.stringify({
@@ -72,26 +134,96 @@ browser_use(action="snapshot")  # 检查是否需要登录
 })
 ```
 
-### 5. 批量下载
+**Note:** This step is only needed if you used headed mode for login. For public pages without login, this step can be skipped.
+
+---
+
+## Step 5: Batch Download
 
 ```bash
-python scripts/audio_downloader.py urls.json -k "关键词" -r "Referer" -c "Cookie"
+python scripts/audio_downloader.py urls.json -k "keyword" -r "Referer" -c "Cookie"
 ```
 
-## 📊 命令行参数
+### Parameters
+
+| Parameter | Description | Required | Default |
+| --------- | ----------- | -------- | ------- |
+| `url_file` | URL JSON file path | Yes | - |
+| `-k` | Keyword (for folder name) | Yes | - |
+| `-r` | Referer URL | Yes | - |
+| `-c` | Cookie string | No | - |
+| `-d` | Download delay (seconds) | No | 0 |
+| `-o` | Output directory | No | ~/Downloads/audios |
+
+---
+
+## Step 6: Use Output Files
+
+### Output Structure
 
 ```
-python scripts/audio_downloader.py url_file -k KEYWORD -r REFERER [-c COOKIES] [-d DELAY]
+{output_dir}/
+└── {keyword}_YYYYMMDD_HHMMSS/
+    ├── 001_audio_name.mp3
+    ├── 002_audio_name.m4a
+    └── download_report.md
+```
 
-参数:
-  url_file    URL JSON 文件
-  -k          关键词（必需）
-  -r          Referer URL（必需）
-  -c          Cookie 字符串
-  -d          下载间隔秒数
+**Default output directory:** `~/Downloads/audios`
+
+### Report Content
+
+The `download_report.md` contains:
+- Total audio items requested
+- Unique audio files (after deduplication)
+- Success/fail/skip counts
+- Output directory structure
+
+---
+
+## Complete Example
+
+**User**: "Download all audio from this playlist"
+
+**Workflow**:
+
+```bash
+# Step 0: Check dependencies
+curl --version
+
+# Step 1: Access page and check login
+browser_use(action="start", headed=False)
+browser_use(action="open", url="https://example.com/playlist")
+browser_use(action="snapshot")
+# If login required: switch to headed=True, wait for user login
+
+# Step 2: Determine intent (playlist vs single audio)
+
+# Step 3: Collect audio URLs
+# Extract URLs via JavaScript or network interception
+
+# Step 4: Get auth info (if login was required)
+# () => JSON.stringify({cookies: document.cookie, referer: window.location.href})
+
+# Step 5: Download
+python scripts/audio_downloader.py urls.json \
+  -k "playlist_name" \
+  -r "https://example.com/playlist" \
+  -c "session_id=xxx"  # Only needed if login was required
+  # -o "/custom/output/path"  # Optional: custom output directory
+
+# Step 6: Check output
+# Files in: ~/Downloads/audios/playlist_name_20260401_140000/
+```
+
+**Output:**
+
+```
+✅ Done! Success: 15, Fail: 0, Skip: 2
+📁 ~/Downloads/audios/playlist_name_20260401_140000/
+📄 download_report.md
 ```
 
 ---
 
-**Version**: 0.0.1
 **Author**: pax
